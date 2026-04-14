@@ -41,6 +41,151 @@ conda activate spark_env
 python scripts/run_pipeline.py
 ```
 
+## Run On YARN
+
+This project already uses Spark, so the distributed mode is Spark on Hadoop YARN.
+For a multi-node run, launch it with `spark-submit` and point the master to YARN:
+
+```bash
+conda activate spark_env
+spark-submit \
+	--master yarn \
+	--deploy-mode client \
+	--num-executors 4 \
+	--executor-cores 4 \
+	--executor-memory 4g \
+	--driver-memory 2g \
+	scripts/run_pipeline.py --master yarn
+```
+
+## Run On A Real Dataset
+
+The pipeline can read a real edge list from CSV, JSON, or Parquet. The dataset should contain source and destination node ids, and can optionally include a weight column and a ground-truth label column.
+Node IDs may be numeric or string transaction hashes; string IDs are indexed to numeric IDs internally for Spark PIC.
+
+### Elliptic Bitcoin Transaction Dataset (Parquet)
+
+If your converted Parquet schema is `(src_id, dst_id, amount, timestamp)`, use:
+
+```bash
+conda activate spark_env
+spark-submit \
+	--master yarn \
+	--deploy-mode client \
+	--num-executors 8 \
+	--executor-cores 4 \
+	--executor-memory 6g \
+	--driver-memory 4g \
+	scripts/run_pipeline.py \
+	--master yarn \
+	--input-path hdfs:///datasets/elliptic/transactions.parquet \
+	--input-format parquet \
+	--source-col src_id \
+	--destination-col dst_id \
+	--weight-col amount \
+	--label-col "" \
+	--time-col timestamp
+```
+
+To run a time slice only (for scaling experiments), add:
+
+```bash
+--time-min 0 --time-max 1000000
+```
+
+### Build Parquet From Raw Elliptic CSVs
+
+If you only have the original raw files (`elliptic_txs_edgelist.csv`, `elliptic_txs_classes.csv`, `elliptic_txs_features.csv`), build the parquet table first:
+
+```bash
+spark-submit \
+	--master yarn \
+	--deploy-mode client \
+	scripts/prepare_elliptic_parquet.py \
+	--master yarn \
+	--edges-path hdfs:///datasets/elliptic/elliptic_txs_edgelist.csv \
+	--classes-path hdfs:///datasets/elliptic/elliptic_txs_classes.csv \
+	--features-path hdfs:///datasets/elliptic/elliptic_txs_features.csv \
+	--output-path hdfs:///datasets/elliptic/elliptic_edges_prepared.parquet \
+	--timestamp-mode max \
+	--default-amount 1.0
+```
+
+Then run the main pipeline on the prepared parquet path:
+
+```bash
+spark-submit \
+	--master yarn \
+	--deploy-mode client \
+	scripts/run_pipeline.py \
+	--master yarn \
+	--input-path hdfs:///datasets/elliptic/elliptic_edges_prepared.parquet \
+	--input-format parquet \
+	--source-col src_id \
+	--destination-col dst_id \
+	--weight-col amount \
+	--label-col true_label \
+	--time-col timestamp
+```
+
+Recommended Elliptic tuning values if you want the model to flag smaller suspicious clusters more aggressively:
+
+```bash
+--pic-k 200 \
+--fraud-score-threshold 0.35 \
+--micro-cluster-max-size 2000 \
+--min-internal-density 0.01
+```
+
+Example for a CSV file in HDFS:
+
+```bash
+conda activate spark_env
+spark-submit \
+	--master yarn \
+	--deploy-mode client \
+	--num-executors 4 \
+	--executor-cores 4 \
+	--executor-memory 4g \
+	--driver-memory 2g \
+	scripts/run_pipeline.py \
+	--master yarn \
+	--input-path hdfs:///data/fraud_edges.csv \
+	--input-format csv \
+	--input-has-header \
+	--source-col src \
+	--destination-col dst \
+	--weight-col weight \
+	--label-col true_label
+```
+
+If your dataset is unweighted, pass an empty weight column and the job will default weights to `1.0`:
+
+```bash
+scripts/run_pipeline.py --input-path hdfs:///data/fraud_edges.parquet --input-format parquet --weight-col "" --label-col ""
+```
+
+If labels are unavailable, the pipeline still clusters the graph, but precision/recall/F1 will not be meaningful.
+
+If you want cluster deploy mode, build a wheel and ship it with `--py-files`:
+
+```bash
+conda activate spark_env
+python -m pip install -U build
+python -m build
+spark-submit \
+	--master yarn \
+	--deploy-mode cluster \
+	--num-executors 4 \
+	--executor-cores 4 \
+	--executor-memory 4g \
+	--driver-memory 2g \
+	--py-files dist/fraud_detection_pic-0.1.0-py3-none-any.whl \
+	scripts/run_pipeline.py --master yarn
+```
+
+When running on YARN, keep `HADOOP_CONF_DIR` and `YARN_CONF_DIR` available in the environment.
+
 ## Visualize Results
 
 ```bash

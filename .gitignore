@@ -1,0 +1,11 @@
+# Large local datasets
+elliptic_bitcoin_dataset/
+
+# Generated run artifacts
+outputs/elliptic_edges_prepared.parquet/
+outputs/elliptic_run.log
+
+# Python cache
+__pycache__/
+**/__pycache__/
+*.pyc

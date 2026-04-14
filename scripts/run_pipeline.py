@@ -12,7 +12,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from fraud_detection_pic.main import format_summary, run_pipeline
-from fraud_detection_pic.config import PipelineConfig
+from fraud_detection_pic.config import PipelineConfig, SparkConfig
 
 
 if __name__ == "__main__":
@@ -26,6 +26,115 @@ if __name__ == "__main__":
         "--output-dir",
         default="outputs",
         help="Directory to store generated artifacts.",
+    )
+    parser.add_argument(
+        "--input-path",
+        default=None,
+        help="Path to a real edge dataset in CSV, Parquet, or JSON format.",
+    )
+    parser.add_argument(
+        "--input-format",
+        default="parquet",
+        help="Input format for --input-path, such as parquet, csv, or json.",
+    )
+    parser.add_argument(
+        "--source-col",
+        default="src",
+        help="Column name for the source node id.",
+    )
+    parser.add_argument(
+        "--destination-col",
+        default="dst",
+        help="Column name for the destination node id.",
+    )
+    parser.add_argument(
+        "--weight-col",
+        default="weight",
+        help="Column name for edge weight. Use an empty string if the dataset is unweighted.",
+    )
+    parser.add_argument(
+        "--label-col",
+        default="true_label",
+        help="Optional label column for evaluation. Use an empty string if labels are unavailable.",
+    )
+    parser.add_argument(
+        "--time-col",
+        default="",
+        help="Optional time column used for range filtering (for example timestamp).",
+    )
+    parser.add_argument(
+        "--time-min",
+        type=float,
+        default=None,
+        help="Optional minimum value for --time-col.",
+    )
+    parser.add_argument(
+        "--time-max",
+        type=float,
+        default=None,
+        help="Optional maximum value for --time-col.",
+    )
+    parser.add_argument(
+        "--input-has-header",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Treat CSV input as having a header row.",
+    )
+    parser.add_argument(
+        "--input-delimiter",
+        default=",",
+        help="Delimiter used for CSV input.",
+    )
+    parser.add_argument(
+        "--master",
+        default="local[*]",
+        help="Spark master URL, for example local[*] or yarn.",
+    )
+    parser.add_argument(
+        "--driver-memory",
+        default="2g",
+        help="Spark driver memory setting.",
+    )
+    parser.add_argument(
+        "--executor-memory",
+        default="4g",
+        help="Spark executor memory setting.",
+    )
+    parser.add_argument(
+        "--shuffle-partitions",
+        type=int,
+        default=200,
+        help="Spark SQL shuffle partition count.",
+    )
+    parser.add_argument(
+        "--default-parallelism",
+        type=int,
+        default=200,
+        help="Spark default parallelism.",
+    )
+    parser.add_argument(
+        "--pic-k",
+        type=int,
+        default=200,
+        help="Number of PIC clusters.",
+    )
+    parser.add_argument(
+        "--fraud-score-threshold",
+        type=float,
+        default=0.35,
+        help="Fraud score cutoff used to flag clusters.",
+    )
+    parser.add_argument(
+        "--micro-cluster-max-size",
+        type=int,
+        default=2000,
+        help="Maximum cluster size to be considered a fraud ring.",
+    )
+    parser.add_argument(
+        "--min-internal-density",
+        type=float,
+        default=0.01,
+        help="Minimum internal density required to flag a cluster.",
     )
     parser.add_argument(
         "--heat-kernel",
@@ -64,18 +173,41 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    spark_cfg = SparkConfig(
+        master=args.master,
+        driver_memory=args.driver_memory,
+        executor_memory=args.executor_memory,
+        shuffle_partitions=str(args.shuffle_partitions),
+        default_parallelism=str(args.default_parallelism),
+    )
     pipeline_cfg = replace(
         PipelineConfig(),
+        pic_k=args.pic_k,
         use_heat_kernel=args.heat_kernel,
         heat_tau_start=args.tau_start,
         heat_tau_end=args.tau_end,
         heat_steps=max(args.cooling_steps, 1),
         faulty_node_quantile=min(max(args.faulty_node_quantile, 0.0), 1.0),
         faulty_edge_boost=max(args.faulty_edge_boost, 0.0),
+        fraud_score_threshold=args.fraud_score_threshold,
+        micro_cluster_max_size=args.micro_cluster_max_size,
+        min_internal_density=max(args.min_internal_density, 0.0),
     )
 
     summary = run_pipeline(
+        spark_cfg=spark_cfg,
         pipeline_cfg=pipeline_cfg,
+        input_path=args.input_path,
+        input_format=args.input_format,
+        source_col=args.source_col,
+        destination_col=args.destination_col,
+        weight_col=args.weight_col or None,
+        label_col=args.label_col or None,
+        time_col=args.time_col or None,
+        time_min=args.time_min,
+        time_max=args.time_max,
+        input_has_header=args.input_has_header,
+        input_delimiter=args.input_delimiter,
         visualize=args.visualize,
         output_dir=args.output_dir,
     )

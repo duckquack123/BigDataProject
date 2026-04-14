@@ -25,7 +25,7 @@ class PipelineConfig:
     n_normal_edges: int = 3000
     seed: int = 42
 
-    pic_k: int = 15
+    pic_k: int = 200
     pic_max_iter: int = 40
     pic_init_mode: str = "random"
 
@@ -39,8 +39,9 @@ class PipelineConfig:
     heat_graph_max_edges: int = 700
     heat_graph_min_weight: float = 0.08
 
-    fraud_score_threshold: float = 0.55
-    micro_cluster_max_size: int = 20
+    fraud_score_threshold: float = 0.35
+    micro_cluster_max_size: int = 2000
+    min_internal_density: float = 0.01
 
     density_weight: float = 0.50
     uniformity_weight: float = 0.30

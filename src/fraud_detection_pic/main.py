@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from pyspark.sql import functions as F
 
 from .config import PipelineConfig, SparkConfig
 from .data_generation import FraudGraphGenerator
@@ -9,6 +10,7 @@ from .pipeline import (
     build_cluster_metrics,
     cleanup_dataframes,
     create_edge_dataframe,
+    create_edge_dataframe_from_df,
     evaluate_predictions,
     run_pic,
     score_clusters,
@@ -21,6 +23,17 @@ from .visualization import generate_visual_artifacts
 def run_pipeline(
     spark_cfg: SparkConfig | None = None,
     pipeline_cfg: PipelineConfig | None = None,
+    input_path: str | None = None,
+    input_format: str = "parquet",
+    source_col: str = "src",
+    destination_col: str = "dst",
+    weight_col: str | None = "weight",
+    label_col: str | None = "true_label",
+    time_col: str | None = None,
+    time_min: float | None = None,
+    time_max: float | None = None,
+    input_has_header: bool = True,
+    input_delimiter: str = ",",
     visualize: bool = False,
     output_dir: str = "outputs",
 ) -> dict[str, Any]:
@@ -29,15 +42,45 @@ def run_pipeline(
 
     spark = build_spark_session(spark_cfg)
 
-    generator = FraudGraphGenerator(
-        n_normal_nodes=pipeline_cfg.n_normal_nodes,
-        n_normal_edges=pipeline_cfg.n_normal_edges,
-        fraud_rings=pipeline_cfg.fraud_rings,
-        seed=pipeline_cfg.seed,
-    )
-    raw_edges = generator.generate()
+    if input_path:
+        reader = spark.read
+        if input_format.lower() == "csv":
+            raw_df = (
+                reader.option("header", str(input_has_header).lower())
+                .option("inferSchema", "true")
+                .option("delimiter", input_delimiter)
+                .csv(input_path)
+            )
+        elif input_format.lower() == "json":
+            raw_df = reader.json(input_path)
+        else:
+            raw_df = reader.format(input_format).load(input_path)
 
-    edge_df, total_edges, _ = create_edge_dataframe(spark, raw_edges)
+        if time_col:
+            if time_col not in raw_df.columns:
+                raise ValueError(f"Missing requested time column: {time_col}")
+            if time_min is not None:
+                raw_df = raw_df.filter(F.col(time_col).cast("double") >= F.lit(float(time_min)))
+            if time_max is not None:
+                raw_df = raw_df.filter(F.col(time_col).cast("double") <= F.lit(float(time_max)))
+
+        edge_df, total_edges, _ = create_edge_dataframe_from_df(
+            raw_df,
+            source_col=source_col,
+            destination_col=destination_col,
+            weight_col=weight_col,
+            label_col=label_col,
+        )
+    else:
+        generator = FraudGraphGenerator(
+            n_normal_nodes=pipeline_cfg.n_normal_nodes,
+            n_normal_edges=pipeline_cfg.n_normal_edges,
+            fraud_rings=pipeline_cfg.fraud_rings,
+            seed=pipeline_cfg.seed,
+        )
+        raw_edges = generator.generate()
+
+        edge_df, total_edges, _ = create_edge_dataframe(spark, raw_edges)
 
     heat_kernel_info: dict[str, Any] | None = None
     if pipeline_cfg.use_heat_kernel:

@@ -44,6 +44,91 @@ def create_edge_dataframe(
     return edge_df, total_edges, float(w_max)
 
 
+def create_edge_dataframe_from_df(
+    edge_df: DataFrame,
+    source_col: str = "src",
+    destination_col: str = "dst",
+    weight_col: str | None = "weight",
+    label_col: str | None = "true_label",
+) -> tuple[DataFrame, int, float]:
+    selected = edge_df
+    columns = set(selected.columns)
+
+    if source_col not in columns:
+        raise ValueError(f"Missing required source column: {source_col}")
+    if destination_col not in columns:
+        raise ValueError(f"Missing required destination column: {destination_col}")
+
+    selected = selected.select(
+        F.trim(F.col(source_col).cast(StringType())).alias("src_key"),
+        F.trim(F.col(destination_col).cast(StringType())).alias("dst_key"),
+        (
+            F.col(weight_col).cast(DoubleType()).alias("weight")
+            if weight_col and weight_col in columns
+            else F.lit(1.0).cast(DoubleType()).alias("weight")
+        ),
+        (
+            F.col(label_col).cast(StringType()).alias("true_label")
+            if label_col and label_col in columns
+            else F.lit("unknown").cast(StringType()).alias("true_label")
+        ),
+    ).filter(
+        F.col("src_key").isNotNull()
+        & F.col("dst_key").isNotNull()
+        & (F.length(F.col("src_key")) > 0)
+        & (F.length(F.col("dst_key")) > 0)
+    )
+
+    selected = selected.withColumn(
+        "weight",
+        F.when(F.col("weight").isNull() | (F.col("weight") <= 0.0), F.lit(1.0)).otherwise(F.col("weight")),
+    )
+
+    node_index = (
+        selected.select(F.col("src_key").alias("node_key"))
+        .union(selected.select(F.col("dst_key").alias("node_key")))
+        .distinct()
+        .withColumn("node_id", F.monotonically_increasing_id().cast(LongType()))
+        .cache()
+    )
+    node_index.count()
+
+    indexed = (
+        selected.join(
+            node_index.withColumnRenamed("node_key", "src_key_map").withColumnRenamed("node_id", "src"),
+            on=selected["src_key"] == F.col("src_key_map"),
+            how="inner",
+        )
+        .join(
+            node_index.withColumnRenamed("node_key", "dst_key_map").withColumnRenamed("node_id", "dst"),
+            on=selected["dst_key"] == F.col("dst_key_map"),
+            how="inner",
+        )
+        .drop("src_key", "dst_key", "src_key_map", "dst_key_map")
+        .select("src", "dst", "weight", "true_label")
+    )
+
+    normalized = (
+        indexed.withColumn("src_norm", F.least(F.col("src"), F.col("dst")))
+        .withColumn("dst_norm", F.greatest(F.col("src"), F.col("dst")))
+        .groupBy("src_norm", "dst_norm", "true_label")
+        .agg(F.max("weight").alias("weight"))
+        .withColumnRenamed("src_norm", "src")
+        .withColumnRenamed("dst_norm", "dst")
+        .filter(F.col("src") != F.col("dst"))
+        .select("src", "dst", "weight", "true_label")
+    )
+
+    w_max = normalized.agg(F.max("weight")).collect()[0][0] or 1.0
+    w_max = float(w_max) if float(w_max) > 0 else 1.0
+    normalized = normalized.withColumn("weight_norm", F.round(F.col("weight") / F.lit(w_max), 6))
+
+    node_index.unpersist()
+    normalized.cache()
+    total_edges = normalized.count()
+    return normalized, total_edges, w_max
+
+
 def run_pic(edge_df: DataFrame, cfg: PipelineConfig) -> tuple[DataFrame, float]:
     pic = PowerIterationClustering(
         k=cfg.pic_k,
@@ -148,7 +233,7 @@ def score_clusters(cluster_metrics: DataFrame, cfg: PipelineConfig) -> DataFrame
             "is_fraud_ring",
             (F.col("fraud_score") >= F.lit(cfg.fraud_score_threshold))
             & (F.col("n_nodes") <= F.lit(cfg.micro_cluster_max_size))
-            & (F.col("internal_density") >= F.lit(0.80)),
+            & (F.col("internal_density") >= F.lit(cfg.min_internal_density)),
         )
         .orderBy(F.desc("fraud_score"))
     )
@@ -170,7 +255,11 @@ def evaluate_predictions(
 
     src_labels = edge_df.select(F.col("src").alias("node_id"), F.col("true_label"))
     dst_labels = edge_df.select(F.col("dst").alias("node_id"), F.col("true_label"))
-    node_labels = src_labels.union(dst_labels).filter(F.col("true_label") != "normal").distinct()
+    node_labels = (
+        src_labels.union(dst_labels)
+        .filter(~F.col("true_label").isin("normal", "unknown"))
+        .distinct()
+    )
 
     node_results_gt = (
         node_results.join(node_labels, on="node_id", how="left")
