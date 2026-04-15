@@ -6,6 +6,7 @@ from typing import Any
 
 from pyspark.ml.clustering import PowerIterationClustering
 from pyspark.sql import DataFrame, SparkSession, functions as F
+from pyspark.sql.window import Window
 from pyspark.sql.types import DoubleType, LongType, StringType, StructField, StructType
 
 from .config import PipelineConfig
@@ -229,14 +230,20 @@ def score_clusters(cluster_metrics: DataFrame, cfg: PipelineConfig) -> DataFrame
                 6,
             ),
         )
-        .withColumn(
-            "is_fraud_ring",
+    )
+
+    score_rank_window = Window.orderBy(F.desc("fraud_score"), F.asc("cluster"))
+
+    scored_clusters = scored_clusters.withColumn("fraud_rank", F.row_number().over(score_rank_window))
+    scored_clusters = scored_clusters.withColumn(
+        "is_fraud_ring",
+        (
             (F.col("fraud_score") >= F.lit(cfg.fraud_score_threshold))
             & (F.col("n_nodes") <= F.lit(cfg.micro_cluster_max_size))
-            & (F.col("internal_density") >= F.lit(cfg.min_internal_density)),
+            & (F.col("internal_density") >= F.lit(cfg.min_internal_density))
         )
-        .orderBy(F.desc("fraud_score"))
-    )
+        | (F.col("fraud_rank") <= F.lit(max(cfg.top_fraud_clusters, 0))),
+    ).orderBy(F.desc("fraud_score"), F.asc("cluster"))
 
     scored_clusters.cache()
     scored_clusters.count()

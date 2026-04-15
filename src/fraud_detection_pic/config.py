@@ -42,6 +42,7 @@ class PipelineConfig:
     fraud_score_threshold: float = 0.35
     micro_cluster_max_size: int = 2000
     min_internal_density: float = 0.01
+    top_fraud_clusters: int = 5
 
     density_weight: float = 0.50
     uniformity_weight: float = 0.30

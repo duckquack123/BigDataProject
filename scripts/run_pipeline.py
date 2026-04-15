@@ -137,6 +137,12 @@ if __name__ == "__main__":
         help="Minimum internal density required to flag a cluster.",
     )
     parser.add_argument(
+        "--top-fraud-clusters",
+        type=int,
+        default=5,
+        help="Always flag the top K clusters by fraud score as a fallback.",
+    )
+    parser.add_argument(
         "--heat-kernel",
         action="store_true",
         help="Enable heat-kernel annealing on Laplacian edge affinities.",
@@ -192,6 +198,7 @@ if __name__ == "__main__":
         fraud_score_threshold=args.fraud_score_threshold,
         micro_cluster_max_size=args.micro_cluster_max_size,
         min_internal_density=max(args.min_internal_density, 0.0),
+        top_fraud_clusters=max(args.top_fraud_clusters, 0),
     )
 
     summary = run_pipeline(
