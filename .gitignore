@@ -9,3 +9,8 @@ outputs/elliptic_run.log
 __pycache__/
 **/__pycache__/
 *.pyc
+
+
+.venv/
+dist/
+src/elliptic_edges_prepared.egg-info/
