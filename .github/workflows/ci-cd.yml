@@ -27,6 +27,7 @@ jobs:
         run: |
           pip install pytest
           PYTHONPATH=src pytest tests/
+        working-directory: ${{ github.workspace }}/BigDataProject
 
       - name: Build Docker image
         run: |
