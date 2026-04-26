@@ -17,7 +17,7 @@ jobs:
       - name: Keep last 2 images, delete the rest
         uses: snok/container-retention-policy@v3.0.1
         with:
-          account-type: personal
+          account: user
           image-names: fraud-detection-pic
           cut-off: 1m # A tiny cutoff so it evaluates everything
           keep-at-least: 2

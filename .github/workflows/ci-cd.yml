@@ -44,7 +44,9 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set image name to lowercase (user namespace)
-        run: echo "IMAGE_NAME=ghcr.io/${{ github.repository }}/fraud-detection-pic:latest" | tr '[:upper:]' '[:lower:]' >> $GITHUB_ENV
+        run: |
+          REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_NAME=ghcr.io/$REPO/fraud-detection-pic:latest" >> $GITHUB_ENV
 
       - name: Tag Docker image
         run: docker tag fraud-detection-pic:latest $IMAGE_NAME
