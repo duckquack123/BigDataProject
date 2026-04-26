@@ -26,7 +26,7 @@ jobs:
       - name: Lint and test
         run: |
           pip install pytest
-          PYTHONPATH=src pytest tests/
+          PYTHONPATH=$(pwd)/src pytest tests/
         working-directory: ${{ github.workspace }}/BigDataProject
 
       - name: Build Docker image
