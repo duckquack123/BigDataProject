@@ -1,0 +1,24 @@
+name: Clean Up Old Images
+
+on:
+  push:
+    branches: [ '**' ]
+  schedule:
+    - cron: '0 0 * * *' # Run daily at midnight
+  workflow_dispatch: # Allow manual runs
+
+jobs:
+  clean-ghcr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Keep last 2 images, delete the rest
+        uses: snok/container-retention-policy@v3
+        with:
+          account-type: personal
+          image-names: fraud-detection-pic
+          cut-off: 1m # A tiny cutoff so it evaluates everything
+          keep-at-least: 2
+          token: ${{ secrets.GITHUB_TOKEN }}
