@@ -22,8 +22,8 @@ COPY src/ ./src/
 COPY scripts/ ./scripts/
 COPY entrypoint.sh /opt/entrypoint.sh
 
-# Install the project in editable mode (or standard mode)
-RUN pip3 install --no-cache-dir -e .
+# Install the project in standard mode (PEP 517/518 compatible)
+RUN pip3 install --no-cache-dir .
 
 # Spark standard environment variables
 ENV PYTHONPATH=$PYTHONPATH:/app/src
