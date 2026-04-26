@@ -1,32 +1,23 @@
-import os
 import pytest
-from fraud_detection_pic.data_generation import generate_elliptic_style_data
-from fraud_detection_pic.spark_utils import build_spark_session
+from fraud_detection_pic.data_generation import FraudGraphGenerator
+from fraud_detection_pic.config import RingConfig
 
-@pytest.fixture(scope="session")
-def spark():
-    spark_session = build_spark_session(appName="testing", master="local[*]", executor_memory="1g")
-    yield spark_session
-    spark_session.stop()
-
-def test_data_generation_creates_clusters(spark):
-    edges_df, classes_df, features_df = generate_elliptic_style_data(
-        spark,
-        num_fraud_rings=2,
-        ring_min_size=10,
-        ring_max_size=20,
-        num_background_nodes=100
-    )
+def test_data_generation_creates_edges():
+    rings = [
+        RingConfig(id_offset=1000, n_nodes=5, weight_mean=50.0, weight_std=10.0),
+        RingConfig(id_offset=2000, n_nodes=3, weight_mean=100.0, weight_std=5.0)
+    ]
+    generator = FraudGraphGenerator(n_normal_nodes=50, n_normal_edges=100, fraud_rings=rings)
+    edges = generator.generate()
     
-    # Check that dataframes are created and not empty
-    assert edges_df.count() > 0
-    assert classes_df.count() > 0
-    assert features_df.count() > 0
+    # Check that edges are created
+    assert len(edges) > 100
     
-    # Check schema
-    assert "src_id" in edges_df.columns
-    assert "dst_id" in edges_df.columns
-    assert "amount" in edges_df.columns
+    # Check that the tuple structure is correct (src, dst, weight, label)
+    assert len(edges[0]) == 4
     
-    assert "node_id" in classes_df.columns
-    assert "true_label" in classes_df.columns
+    # Verify that we have some fraud ring edges
+    labels = [edge[3] for edge in edges]
+    assert "fraud_ring_A" in labels
+    assert "fraud_ring_B" in labels
+    assert "normal" in labels
