@@ -15,16 +15,21 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
+
 # Copy the source code and installation files
 COPY pyproject.toml .
 COPY src/ ./src/
 COPY scripts/ ./scripts/
+COPY entrypoint.sh /opt/entrypoint.sh
 
 # Install the project in editable mode (or standard mode)
 RUN pip3 install --no-cache-dir -e .
 
 # Spark standard environment variables
 ENV PYTHONPATH=$PYTHONPATH:/app/src
+
+# Make entrypoint executable
+RUN chmod +x /opt/entrypoint.sh
 
 # Set the default user back to spark for security
 USER spark

@@ -1,0 +1,30 @@
+version: '3.8'
+
+
+services:
+  master:
+    build: .
+    image: fraud-detection-pic:latest
+    container_name: master
+    environment:
+      - ROLE=master
+    ports:
+      - "8080:8080"
+    networks:
+      - fraud-net
+
+  worker:
+    build: .
+    image: fraud-detection-pic:latest
+    environment:
+      - ROLE=worker
+    networks:
+      - fraud-net
+
+  # To scale workers, use:
+  #   docker compose up --scale worker=N
+  # where N is the desired number of workers
+
+networks:
+  fraud-net:
+    driver: bridge

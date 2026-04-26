@@ -120,6 +120,38 @@ docker run --rm fraud-detection-pic:latest python3 -m pytest
 
 ---
 
+## 🐳 Distributed Docker & CI/CD
+
+### CI/CD with GitHub Actions
+- Automated build, test, and Docker image creation on every push or pull request to `main`.
+- See `.github/workflows/ci-cd.yml` for details.
+
+### Distributed Spark with Docker Compose
+- Use `docker-compose.yml` to launch a Spark master and two worker containers for distributed computation.
+- The `entrypoint.sh` script configures each container as either a master or worker based on the `ROLE` environment variable.
+
+#### Quick Start
+
+```bash
+# Build and start the cluster
+sudo docker compose up --build
+
+# Master node will be available at spark://master:7077
+# You can scale workers:
+sudo docker compose up --scale worker=4 -d
+```
+
+- By default, `docker-compose.yml` defines a single `worker` service, but you can scale to any number of workers:
+
+```bash
+sudo docker compose up --scale worker=4 -d  # Launch 4 workers
+```
+
+- The master will auto-discover all workers on the `fraud-net` network.
+- Adjust the number as needed for your workload and hardware.
+
+---
+
 ## ☸️ Kubernetes Deployment
 
 The project supports deployment via the **Spark Operator**. 
