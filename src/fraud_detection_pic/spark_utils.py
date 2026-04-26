@@ -11,9 +11,10 @@ def build_spark_session(cfg: SparkConfig) -> SparkSession:
     os.environ["PYSPARK_PYTHON"] = sys.executable
     os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
 
-    spark = (
+    builder = (
         SparkSession.builder.appName(cfg.app_name)
         .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+        .config("spark.kryo.registrator", "com.nvidia.spark.rapids.GpuKryoRegistrator")
         .config("spark.kryo.unsafe", "true")
         .config("spark.driver.memory", cfg.driver_memory)
         .config("spark.executor.memory", cfg.executor_memory)
@@ -27,8 +28,22 @@ def build_spark_session(cfg: SparkConfig) -> SparkSession:
         .config("spark.sql.adaptive.coalescePartitions.enabled", "true")
         .config("spark.sql.adaptive.skewJoin.enabled", "true")
         .config("spark.ml.powerIterationClustering.convergenceTol", "1e-5")
+        # RAPIDS GPU configurations
+        .config("spark.plugins", "com.nvidia.spark.SQLPlugin")
+        .config("spark.rapids.sql.enabled", "true")
+        .config("spark.rapids.sql.explain", "ALL")
+        .config("spark.jars", "rapids-4-spark.jar")
         .master(cfg.master)
-        .getOrCreate()
     )
+
+    if "local" in cfg.master:
+        builder = (
+            builder.config("spark.driver.resource.gpu.amount", "1")
+            .config("spark.driver.resource.gpu.discoveryScript", "./get-gpu-resources.sh")
+        )
+    else:
+        builder = builder.config("spark.executor.resource.gpu.amount", "1")
+
+    spark = builder.getOrCreate()
     spark.sparkContext.setLogLevel("WARN")
     return spark

@@ -59,6 +59,13 @@ def create_edge_dataframe_from_df(
         raise ValueError(f"Missing required source column: {source_col}")
     if destination_col not in columns:
         raise ValueError(f"Missing required destination column: {destination_col}")
+    if label_col and label_col not in columns:
+        available_cols = ", ".join(sorted(columns))
+        raise ValueError(
+            f"Missing requested label column: {label_col}. "
+            + "Pass --label-col '' to disable evaluation, or provide a valid label column. "
+            + f"Available columns: {available_cols}"
+        )
 
     selected = selected.select(
         F.trim(F.col(source_col).cast(StringType())).alias("src_key"),
@@ -262,23 +269,68 @@ def evaluate_predictions(
 
     src_labels = edge_df.select(F.col("src").alias("node_id"), F.col("true_label"))
     dst_labels = edge_df.select(F.col("dst").alias("node_id"), F.col("true_label"))
+
+    # Normalize diverse label encodings (fraud/normal, illicit/licit, 1/2, true/false).
+    label_norm = F.lower(F.trim(F.coalesce(F.col("true_label").cast(StringType()), F.lit(""))))
+    positive_labels = ["fraud", "illicit", "1", "true", "yes", "y", "positive", "anomaly", "anomalous"]
+    negative_labels = [
+        "normal",
+        "licit",
+        "2",
+        "0",
+        "false",
+        "no",
+        "n",
+        "negative",
+        "unknown",
+        "",
+        "none",
+        "null",
+        "nan",
+    ]
+
     node_labels = (
         src_labels.union(dst_labels)
-        .filter(~F.col("true_label").isin("normal", "unknown"))
-        .distinct()
+        .withColumn(
+            "true_fraud",
+            F.when(label_norm.isin(*positive_labels), F.lit(True))
+            .when(label_norm.isin(*negative_labels), F.lit(False))
+            .otherwise(F.lit(None).cast("boolean")),
+        )
+        .groupBy("node_id")
+        .agg(
+            F.max(
+                F.when(F.col("true_fraud") == F.lit(True), F.lit(1)).otherwise(F.lit(0))
+            ).alias("has_positive"),
+            F.max(
+                F.when(F.col("true_fraud").isNotNull(), F.lit(1)).otherwise(F.lit(0))
+            ).alias("has_known_label"),
+        )
+        .withColumn(
+            "true_fraud",
+            F.when(F.col("has_known_label") == F.lit(0), F.lit(None).cast("boolean")).otherwise(
+                F.col("has_positive") == F.lit(1)
+            ),
+        )
+        .select("node_id", "true_fraud")
     )
 
     node_results_gt = (
         node_results.join(node_labels, on="node_id", how="left")
-        .withColumn("true_fraud", F.col("true_label").isNotNull() & (F.col("true_label") != "normal"))
     )
     node_results_gt.cache()
     node_results_gt.count()
 
-    tp = node_results_gt.filter(F.col("is_fraud_ring") & F.col("true_fraud")).count()
-    fp = node_results_gt.filter(F.col("is_fraud_ring") & ~F.col("true_fraud")).count()
-    fn = node_results_gt.filter(~F.col("is_fraud_ring") & F.col("true_fraud")).count()
-    tn = node_results_gt.filter(~F.col("is_fraud_ring") & ~F.col("true_fraud")).count()
+    labeled_results = node_results_gt.filter(F.col("true_fraud").isNotNull())
+
+    tp = labeled_results.filter(F.col("is_fraud_ring") & F.col("true_fraud")).count()
+    fp = labeled_results.filter(F.col("is_fraud_ring") & ~F.col("true_fraud")).count()
+    fn = labeled_results.filter(~F.col("is_fraud_ring") & F.col("true_fraud")).count()
+    tn = labeled_results.filter(~F.col("is_fraud_ring") & ~F.col("true_fraud")).count()
+
+    n_labeled_nodes = labeled_results.count()
+    n_positive_nodes = labeled_results.filter(F.col("true_fraud")).count()
+    n_flagged_nodes = labeled_results.filter(F.col("is_fraud_ring")).count()
 
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
@@ -295,6 +347,10 @@ def evaluate_predictions(
         "precision": precision,
         "recall": recall,
         "f1": f1,
+        "n_labeled_nodes": n_labeled_nodes,
+        "n_positive_nodes": n_positive_nodes,
+        "n_flagged_nodes": n_flagged_nodes,
+        "has_ground_truth": n_labeled_nodes > 0 and n_positive_nodes > 0,
         "flagged_cluster_ids": flagged_cluster_ids,
     }
 
@@ -343,6 +399,10 @@ def summarize_pipeline(
         "fp": metrics["fp"],
         "fn": metrics["fn"],
         "tn": metrics["tn"],
+        "n_labeled_nodes": metrics["n_labeled_nodes"],
+        "n_positive_nodes": metrics["n_positive_nodes"],
+        "n_flagged_nodes": metrics["n_flagged_nodes"],
+        "has_ground_truth": metrics["has_ground_truth"],
     }
 
 

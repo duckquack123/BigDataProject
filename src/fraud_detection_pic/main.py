@@ -149,6 +149,14 @@ def format_summary(summary: dict[str, Any]) -> str:
             + f"- risk_threshold: {hk.get('risk_threshold')}"
         )
 
+    eval_note = ""
+    if not summary.get("has_ground_truth", True):
+        eval_note = (
+            "\n"
+            + "Evaluation note: labeled positives were not found in the input labels. "
+            + "Precision/recall/F1 may be zero or not meaningful."
+        )
+
     return (
         "\n" + "=" * 70 + "\n"
         + "FRAUD DETECTION PIPELINE SUMMARY\n"
@@ -167,6 +175,10 @@ def format_summary(summary: dict[str, Any]) -> str:
         + f"Recall: {summary['recall']:.4f}\n"
         + f"F1 score: {summary['f1']:.4f}\n"
         + f"TP/FP/FN/TN: {summary['tp']}/{summary['fp']}/{summary['fn']}/{summary['tn']}\n"
+        + f"Labeled nodes: {summary['n_labeled_nodes']}\n"
+        + f"Positive-label nodes: {summary['n_positive_nodes']}\n"
+        + f"Flagged labeled nodes: {summary['n_flagged_nodes']}\n"
+        + eval_note
         + artifacts_text
         + heat_text
     )
