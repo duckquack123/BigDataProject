@@ -25,7 +25,7 @@
 
 services:
   master:
-    image: ghcr.io/jaishankar02/bigdataproject/fraud-detection-pic:latest
+    image: ghcr.io/duckquack123/bigdataproject/fraud-detection-pic:latest
     hostname: master
     environment:
       - ROLE=master
@@ -49,7 +49,7 @@ services:
           - node.role == manager
 
   worker:
-    image: ghcr.io/jaishankar02/bigdataproject/fraud-detection-pic:latest
+    image: ghcr.io/duckquack123/bigdataproject/fraud-detection-pic:latest
     environment:
       - ROLE=worker
       - SPARK_MASTER_URL=spark://master:7077

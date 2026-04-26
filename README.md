@@ -200,7 +200,7 @@ docker run -d --name spark-master \
   -p 7077:7077 -p 8080:8080 -p 4040:4040 \
   -v "$PWD/outputs:/app/outputs" \
   --network host \
-  ghcr.io/jaishankar02/bigdataproject/fraud-detection-pic:latest
+  ghcr.io/duckquack123/bigdataproject/fraud-detection-pic:latest
 ```
 
 #### On each Worker machine:
@@ -211,7 +211,7 @@ docker run -d --name spark-worker \
   -e WORKER_CORES=4 \
   -e WORKER_MEMORY=4g \
   --network host \
-  ghcr.io/jaishankar02/bigdataproject/fraud-detection-pic:latest
+  ghcr.io/duckquack123/bigdataproject/fraud-detection-pic:latest
 ```
 
 > **Note:** `--network host` is required so workers and master can communicate directly over the LAN.
@@ -233,14 +233,14 @@ Run everything in a single container (backward compatible):
 
 ```bash
 # Pull from GHCR
-docker pull ghcr.io/jaishankar02/bigdataproject/fraud-detection-pic:latest
+docker pull ghcr.io/duckquack123/bigdataproject/fraud-detection-pic:latest
 
 # Run all-in-one
 docker run --rm \
    -v "$PWD/outputs:/app/outputs" \
    -e ROLE=standalone \
    -e NUM_WORKERS=2 \
-   ghcr.io/jaishankar02/bigdataproject/fraud-detection-pic:latest
+   ghcr.io/duckquack123/bigdataproject/fraud-detection-pic:latest
 ```
 
 ---

@@ -15,7 +15,7 @@ jobs:
       packages: write
     steps:
       - name: Keep last 2 images, delete the rest
-        uses: snok/container-retention-policy@v3
+        uses: snok/container-retention-policy@v3.0.1
         with:
           account-type: personal
           image-names: fraud-detection-pic
