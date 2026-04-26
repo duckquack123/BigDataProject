@@ -40,10 +40,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set image name to lowercase
+        run: echo "IMAGE_NAME=ghcr.io/${GITHUB_REPOSITORY,,}/fraud-detection-pic:latest" >> $GITHUB_ENV
+
       - name: Tag Docker image
-        run: |
-          docker tag fraud-detection-pic:latest ghcr.io/${{ github.repository }}/fraud-detection-pic:latest
+        run: docker tag fraud-detection-pic:latest $IMAGE_NAME
 
       - name: Push Docker image
-        run: |
-          docker push ghcr.io/${{ github.repository }}/fraud-detection-pic:latest
+        run: docker push $IMAGE_NAME
