@@ -1,5 +1,5 @@
-# Use the official Spark image for Python
-FROM apache/spark-py:v3.5.0
+# Use the official Spark image
+FROM apache/spark:3.5.0
 
 USER root
 
