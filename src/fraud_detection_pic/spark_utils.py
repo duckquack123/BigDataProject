@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 import sys
 from pyspark.sql import SparkSession
@@ -31,15 +32,16 @@ def build_spark_session(cfg: SparkConfig) -> SparkSession:
         .master(cfg.master)
     )
 
-    # Only add RAPIDS configs and GpuKryoRegistrator if not running in CI
-    if not os.environ.get("CI"):
+    # Only add RAPIDS configs if the plugin jar is present and not in CI
+    jar_path = "rapids-4-spark.jar"
+    if not os.environ.get("CI") and os.path.exists(jar_path):
         builder = (
             builder
             .config("spark.kryo.registrator", "com.nvidia.spark.rapids.GpuKryoRegistrator")
             .config("spark.plugins", "com.nvidia.spark.SQLPlugin")
             .config("spark.rapids.sql.enabled", "true")
             .config("spark.rapids.sql.explain", "ALL")
-            .config("spark.jars", "rapids-4-spark.jar")
+            .config("spark.jars", jar_path)
         )
 
     if "local" in cfg.master:
@@ -47,7 +49,9 @@ def build_spark_session(cfg: SparkConfig) -> SparkSession:
             builder.config("spark.driver.resource.gpu.amount", "1")
             .config("spark.driver.resource.gpu.discoveryScript", "./get-gpu-resources.sh")
         )
-    else:
+    elif not cfg.master.startswith("spark://"):
+        # Only request executor GPU when running on YARN/Mesos, not in
+        # standalone Docker cluster mode where workers self-manage resources.
         builder = builder.config("spark.executor.resource.gpu.amount", "1")
 
     spark = builder.getOrCreate()

@@ -76,10 +76,17 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--input-has-header",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Treat CSV input as having a header row.",
+        action="store_true",
+        dest="input_has_header",
+        help="Treat CSV input as having a header row (default).",
     )
+    parser.add_argument(
+        "--no-input-has-header",
+        action="store_false",
+        dest="input_has_header",
+        help="Treat CSV input as NOT having a header row.",
+    )
+    parser.set_defaults(input_has_header=True)
     parser.add_argument(
         "--input-delimiter",
         default=",",
@@ -99,6 +106,11 @@ if __name__ == "__main__":
         "--executor-memory",
         default="4g",
         help="Spark executor memory setting.",
+    )
+    parser.add_argument(
+        "--executor-cores",
+        default="2",
+        help="Spark executor cores setting.",
     )
     parser.add_argument(
         "--shuffle-partitions",
@@ -183,6 +195,7 @@ if __name__ == "__main__":
         master=args.master,
         driver_memory=args.driver_memory,
         executor_memory=args.executor_memory,
+        executor_cores=str(args.executor_cores),
         shuffle_partitions=str(args.shuffle_partitions),
         default_parallelism=str(args.default_parallelism),
     )

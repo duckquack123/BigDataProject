@@ -1,15 +1,22 @@
-version: '3.8'
-
-
 services:
   master:
     build: .
     image: fraud-detection-pic:latest
-    container_name: master
+    container_name: spark-master
+    hostname: master
     environment:
       - ROLE=master
+      - SPARK_MASTER_URL=spark://master:7077
+      - WORKER_MEMORY=2g
+      - WORKER_CORES=2
+      - WAIT_FOR_WORKERS=30
+      - PIPELINE_ARGS=--visualize --output-dir /app/outputs --master spark://master:7077 --executor-memory 2g --executor-cores 2
     ports:
-      - "8080:8080"
+      - "8080:8080"   # Spark Master Web UI
+      - "7077:7077"   # Spark Master port
+      - "4040:4040"   # Spark Application UI
+    volumes:
+      - ./outputs:/app/outputs
     networks:
       - fraud-net
 
@@ -18,12 +25,16 @@ services:
     image: fraud-detection-pic:latest
     environment:
       - ROLE=worker
+      - SPARK_MASTER_URL=spark://master:7077
+      - WORKER_MEMORY=2g
+      - WORKER_CORES=2
+    depends_on:
+      - master
     networks:
       - fraud-net
 
-  # To scale workers, use:
-  #   docker compose up --scale worker=N
-  # where N is the desired number of workers
+  # Scale workers with:
+  #   docker compose up --build --scale worker=3
 
 networks:
   fraud-net:

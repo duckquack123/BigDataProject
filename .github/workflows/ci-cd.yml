@@ -23,11 +23,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # - name: Lint and test
-      #   run: |
-      #     pip install pytest
-      #     PYTHONPATH=$(pwd)/src pytest tests/
-      #   working-directory: ${{ github.workspace }}
+      - name: Lint and test
+        run: |
+          pip install pytest
+          PYTHONPATH=$(pwd)/src pytest tests/
+        working-directory: ${{ github.workspace }}
 
       - name: Build Docker image
         run: |

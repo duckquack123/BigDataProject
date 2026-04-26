@@ -15,7 +15,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-
 # Copy the source code and installation files
 COPY pyproject.toml .
 COPY src/ ./src/
@@ -28,11 +27,18 @@ RUN pip3 install --no-cache-dir .
 # Spark standard environment variables
 ENV PYTHONPATH=$PYTHONPATH:/app/src
 
+# Create outputs directory and give spark user ownership
+RUN mkdir -p /app/outputs && chown spark:spark /app/outputs
+
 # Make entrypoint executable
 RUN chmod +x /opt/entrypoint.sh
 
-# Set the default user back to spark for security
-USER spark
+# Expose Spark ports
+# 7077 = Master port, 8080 = Master Web UI, 8081 = Worker Web UI, 4040 = Application UI
+EXPOSE 7077 8080 8081 4040
+
+# Note: Running as root so entrypoint can fix mounted volume permissions.
+# For production, consider using gosu to drop privileges after setup.
 
 # Default command (can be overridden by spark-submit)
 ENTRYPOINT [ "/opt/entrypoint.sh" ]

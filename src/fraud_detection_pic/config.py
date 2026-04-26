@@ -1,3 +1,4 @@
+from __future__ import annotations
 from dataclasses import dataclass, field
 
 
@@ -7,6 +8,7 @@ class SparkConfig:
     master: str = "local[*]"
     driver_memory: str = "2g"
     executor_memory: str = "4g"
+    executor_cores: str = "2"
     shuffle_partitions: str = "200"
     default_parallelism: str = "200"
 

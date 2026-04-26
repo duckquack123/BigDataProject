@@ -106,49 +106,148 @@ python scripts/run_pipeline.py --visualize --output-dir outputs
 
 ---
 
-## 🐳 Dockerization
 
-Build the image:
+## 🐳 Distributed Docker Cluster
+
+Each Spark worker runs in **its own Docker container**, forming a true distributed cluster.
+
+### Quick Start (Distributed)
 ```bash
-docker build -t fraud-detection-pic:latest .
+# Build and launch master + 2 workers
+sudo docker compose up --build --scale worker=2
+
+# Scale to more workers on the fly
+sudo docker compose up --scale worker=4 -d
 ```
 
-Run tests inside the container:
+**What happens:**
+1. **Master container** starts the Spark master, waits for workers, then runs the pipeline via `spark-submit`
+2. **Worker containers** each start a Spark worker that connects to `spark://master:7077`
+3. Results are saved to the `outputs/` directory on your host (volume-mounted)
+
+### Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `ROLE` | `standalone` | Container role: `master`, `worker`, or `standalone` |
+| `WORKER_CORES` | `2` | CPU cores per worker |
+| `WORKER_MEMORY` | `2g` | Memory per worker |
+| `WAIT_FOR_WORKERS` | `30` | Seconds master waits for workers before submitting |
+| `PIPELINE_ARGS` | `--visualize --output-dir /app/outputs` | CLI args for the pipeline |
+
+### Spark UI Access
+- **Master UI:** [http://localhost:8080](http://localhost:8080)
+- **Application UI:** [http://localhost:4040](http://localhost:4040)
+
+---
+
+## 🌐 Multi-Machine Deployment
+
+Run the master on your machine and workers on **other physical machines** on the same network.
+
+### Option A: Docker Swarm (Recommended)
+
+Docker Swarm makes multi-machine deployment feel just like `docker compose`.
+
+#### 1. Initialize Swarm on the Master machine (your machine):
 ```bash
-docker run --rm fraud-detection-pic:latest python3 -m pytest
+docker swarm init --advertise-addr <YOUR_LAN_IP>
+# Example: docker swarm init --advertise-addr 192.168.1.10
+```
+This prints a `docker swarm join` command with a token.
+
+#### 2. Join each Worker machine to the Swarm:
+Run the join command on every other machine:
+```bash
+docker swarm join --token <TOKEN> <MASTER_IP>:2377
+```
+
+#### 3. Deploy the cluster:
+Back on the master machine:
+```bash
+docker stack deploy -c docker-compose.swarm.yml fraud
+```
+
+#### 4. Monitor and Scale:
+```bash
+# Check services
+docker service ls
+
+# Scale to 5 workers across all machines
+docker service scale fraud_worker=5
+
+# View master logs
+docker service logs fraud_master -f
+```
+
+#### 5. Tear down:
+```bash
+docker stack rm fraud
+docker swarm leave --force  # on each machine
+```
+
+### Option B: Manual `docker run` (No Swarm)
+
+If you can't use Swarm, you can manually start containers on each machine.
+
+#### On your machine (Master):
+```bash
+docker run -d --name spark-master \
+  -e ROLE=master \
+  -e SPARK_MASTER_URL=spark://<YOUR_IP>:7077 \
+  -e WAIT_FOR_WORKERS=60 \
+  -e "PIPELINE_ARGS=--visualize --output-dir /app/outputs --master spark://<YOUR_IP>:7077 --executor-memory 2g --executor-cores 2" \
+  -p 7077:7077 -p 8080:8080 -p 4040:4040 \
+  -v "$PWD/outputs:/app/outputs" \
+  --network host \
+  ghcr.io/jaishankar02/bigdataproject/fraud-detection-pic:latest
+```
+
+#### On each Worker machine:
+```bash
+docker run -d --name spark-worker \
+  -e ROLE=worker \
+  -e SPARK_MASTER_URL=spark://<MASTER_IP>:7077 \
+  -e WORKER_CORES=4 \
+  -e WORKER_MEMORY=4g \
+  --network host \
+  ghcr.io/jaishankar02/bigdataproject/fraud-detection-pic:latest
+```
+
+> **Note:** `--network host` is required so workers and master can communicate directly over the LAN.
+
+### Network Requirements
+
+| Port | Purpose | Must be open on |
+|------|---------|-----------------|
+| `7077` | Spark Master | Master machine |
+| `8080` | Master Web UI | Master machine |
+| `4040` | Application UI | Master machine |
+| `2377` | Swarm management (Swarm only) | Master machine |
+
+---
+
+### 🐳 Standalone Mode (All-in-One, No Compose Needed)
+
+Run everything in a single container (backward compatible):
+
+```bash
+# Pull from GHCR
+docker pull ghcr.io/jaishankar02/bigdataproject/fraud-detection-pic:latest
+
+# Run all-in-one
+docker run --rm \
+   -v "$PWD/outputs:/app/outputs" \
+   -e ROLE=standalone \
+   -e NUM_WORKERS=2 \
+   ghcr.io/jaishankar02/bigdataproject/fraud-detection-pic:latest
 ```
 
 ---
 
-## 🐳 Distributed Docker & CI/CD
-
-### CI/CD with GitHub Actions
-- Automated build, test, and Docker image creation on every push or pull request to `main`.
+## 🐳 CI/CD with GitHub Actions
+- Automated build and Docker image push on every push or pull request.
 - See `.github/workflows/ci-cd.yml` for details.
-
-### Distributed Spark with Docker Compose
-- Use `docker-compose.yml` to launch a Spark master and two worker containers for distributed computation.
-- The `entrypoint.sh` script configures each container as either a master or worker based on the `ROLE` environment variable.
-
-#### Quick Start
-
-```bash
-# Build and start the cluster
-sudo docker compose up --build
-
-# Master node will be available at spark://master:7077
-# You can scale workers:
-sudo docker compose up --scale worker=4 -d
-```
-
-- By default, `docker-compose.yml` defines a single `worker` service, but you can scale to any number of workers:
-
-```bash
-sudo docker compose up --scale worker=4 -d  # Launch 4 workers
-```
-
-- The master will auto-discover all workers on the `fraud-net` network.
-- Adjust the number as needed for your workload and hardware.
 
 ---
 

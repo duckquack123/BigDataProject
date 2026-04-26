@@ -1,0 +1,71 @@
+####################################################################
+# Docker Compose for Multi-Machine Deployment (Docker Swarm)
+#
+# Usage:
+#   1. On the master machine:
+#        docker swarm init --advertise-addr <YOUR_IP>
+#
+#   2. On each worker machine:
+#        docker swarm join --token <TOKEN> <MASTER_IP>:2377
+#
+#   3. Deploy the stack:
+#        docker stack deploy -c docker-compose.swarm.yml fraud
+#
+#   4. Scale workers:
+#        docker service scale fraud_worker=5
+#
+#   5. Monitor:
+#        docker service ls
+#        docker service logs fraud_master -f
+#
+#   6. Tear down:
+#        docker stack rm fraud
+#        docker swarm leave --force
+####################################################################
+
+services:
+  master:
+    image: ghcr.io/jaishankar02/bigdataproject/fraud-detection-pic:latest
+    hostname: master
+    environment:
+      - ROLE=master
+      - SPARK_MASTER_URL=spark://master:7077
+      - WORKER_MEMORY=2g
+      - WORKER_CORES=2
+      - WAIT_FOR_WORKERS=60
+      - PIPELINE_ARGS=--visualize --output-dir /app/outputs --master spark://master:7077 --executor-memory 2g --executor-cores 2
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+      - "4040:4040"
+    volumes:
+      - fraud-outputs:/app/outputs
+    networks:
+      - fraud-swarm
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+
+  worker:
+    image: ghcr.io/jaishankar02/bigdataproject/fraud-detection-pic:latest
+    environment:
+      - ROLE=worker
+      - SPARK_MASTER_URL=spark://master:7077
+      - WORKER_MEMORY=2g
+      - WORKER_CORES=2
+    networks:
+      - fraud-swarm
+    deploy:
+      replicas: 3
+      placement:
+        constraints:
+          - node.role == worker
+
+volumes:
+  fraud-outputs:
+
+networks:
+  fraud-swarm:
+    driver: overlay
