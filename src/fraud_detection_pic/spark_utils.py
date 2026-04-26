@@ -15,7 +15,6 @@ def build_spark_session(cfg: SparkConfig) -> SparkSession:
     builder = (
         SparkSession.builder.appName(cfg.app_name)
         .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
-        .config("spark.kryo.registrator", "com.nvidia.spark.rapids.GpuKryoRegistrator")
         .config("spark.kryo.unsafe", "true")
         .config("spark.driver.memory", cfg.driver_memory)
         .config("spark.executor.memory", cfg.executor_memory)
@@ -32,10 +31,11 @@ def build_spark_session(cfg: SparkConfig) -> SparkSession:
         .master(cfg.master)
     )
 
-    # Only add RAPIDS configs if not running in CI
+    # Only add RAPIDS configs and GpuKryoRegistrator if not running in CI
     if not os.environ.get("CI"):
         builder = (
             builder
+            .config("spark.kryo.registrator", "com.nvidia.spark.rapids.GpuKryoRegistrator")
             .config("spark.plugins", "com.nvidia.spark.SQLPlugin")
             .config("spark.rapids.sql.enabled", "true")
             .config("spark.rapids.sql.explain", "ALL")
