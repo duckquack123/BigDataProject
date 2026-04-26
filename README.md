@@ -1,250 +1,148 @@
 # Fraud Detection PIC Project
 
-This project converts the original notebook workflow into a structured Python package for large-scale fraud-ring detection with Spark Power Iteration Clustering (PIC).
+This project provides a high-performance, scalable pipeline for large-scale fraud-ring detection using **Spark Power Iteration Clustering (PIC)**. It is specifically designed to handle massive transaction networks, such as the Elliptic Bitcoin dataset, using both CPU and GPU acceleration.
 
-## Project Structure
+## 🚀 Key Features
+
+*   **Distributed Clustering:** Uses Spark ML's Power Iteration Clustering for unsupervised fraud detection.
+*   **GPU Acceleration:** Integrated with **NVIDIA RAPIDS** to offload heavy ETL, joins, and matrix math to NVIDIA GPUs (e.g., RTX 3050, A100).
+*   **Heat-Kernel Laplacian Cooling:** Advanced graph-annealing technique to highlight suspicious regions in the network.
+*   **Real-world Dataset Support:** Built-in scripts for processing the Elliptic Bitcoin Dataset.
+*   **Visual Analytics:** Generates cluster density charts, fraud score distributions, and animated GIFs of the heat-cooling process.
+*   **Cloud & Container Ready:** Includes Docker and Kubernetes deployment strategies.
+
+---
+
+## 📂 Project Structure
 
 ```text
 big_data_project/
-├── notebooks/
-│   └── fraud_detection_pic.ipynb
+├── src/fraud_detection_pic/    # Core Python package
+│   ├── config.py               # Pipeline & Spark parameters
+│   ├── data_generation.py      # Synthetic fraud-ring generator
+│   ├── main.py                 # Pipeline orchestration
+│   ├── pipeline.py             # Clustering & evaluation logic
+│   ├── spark_utils.py          # GPU/CPU Spark session factory
+│   └── visualization.py        # Matplotlib/GIF logic
 ├── scripts/
-│   └── run_pipeline.py
-├── src/
-│   └── fraud_detection_pic/
-│       ├── __init__.py
-│       ├── config.py
-│       ├── data_generation.py
-│       ├── main.py
-│       ├── pipeline.py
-│       └── spark_utils.py
-├── tests/
-│   └── test_smoke.py
-├── pyproject.toml
-└── requirements.txt
+│   ├── run_pipeline.py         # Main CLI entrypoint
+│   └── prepare_elliptic_parquet.py # Dataset preprocessing
+├── notebooks/                  # Experimental notebooks
+├── outputs/                    # Generated reports & charts
+├── Dockerfile                  # Containerization config
+├── get-gpu-resources.sh        # GPU discovery script for Spark
+├── rapids-4-spark.jar          # NVIDIA RAPIDS plugin (downloaded)
+└── pyproject.toml              # Build & dependency config
 ```
 
-## Setup (Existing spark_env)
+---
 
+## ⚙️ Setup & GPU Acceleration
+
+### 1. Local Environment (Conda)
 ```bash
 conda activate spark_env
-python -m pip install -U pip
 python -m pip install -e .
 ```
 
-If dependencies are already installed in `spark_env`, you can skip installation and run directly.
+### 2. Enabling NVIDIA RAPIDS (GPU)
+This project is configured to automatically offload heavy workloads to your GPU if the RAPIDS plugin is present.
 
-## Run
+#### Prerequisites:
+1. **NVIDIA Drivers:** Ensure you have drivers installed (e.g., version 535+). Check with `nvidia-smi`.
+2. **Download the Plugin:** The project looks for a file named `rapids-4-spark.jar` in the root directory.
+   ```bash
+   wget https://repo1.maven.org/maven2/com/nvidia/rapids-4-spark_2.12/24.04.1/rapids-4-spark_2.12-24.04.1.jar -O rapids-4-spark.jar
+   ```
+3. **GPU Discovery Script:** Spark requires a script to locate your GPU. We use `get-gpu-resources.sh`:
+   ```bash
+   # Create the script if missing
+   echo -e '#!/bin/bash\necho "{\\"name\\": \\"gpu\\", \\"addresses\\": [\\"0\\"]}"' > get-gpu-resources.sh
+   chmod +x get-gpu-resources.sh
+   ```
 
-```bash
-conda activate spark_env
-python scripts/run_pipeline.py
+#### Verification:
+When you run the pipeline, check for these indicators of success:
+- **Console Logs:** Look for `WARN RapidsPluginUtils: RAPIDS Accelerator 24.04.1 using cudf ...`
+- **Spark UI:** Visit `http://localhost:4040` (or 4041). In the **SQL** tab, GPU-accelerated operators will be prefixed with **`Gpu`** (e.g., `GpuHashAggregate`).
+
+#### Disabling GPU Fallback:
+If you want to force the pipeline to run on CPU even if a GPU is present, modify `src/fraud_detection_pic/spark_utils.py` and set:
+```python
+.config("spark.rapids.sql.enabled", "false")
 ```
 
-## Run On YARN
+---
 
-This project already uses Spark, so the distributed mode is Spark on Hadoop YARN.
-For a multi-node run, launch it with `spark-submit` and point the master to YARN:
+## 🏃 Running the Pipeline
 
+### Synthetic Data (Quick Test)
+Run a local run with default synthetic data and visualization:
 ```bash
-conda activate spark_env
-spark-submit \
-	--master yarn \
-	--deploy-mode client \
-	--num-executors 4 \
-	--executor-cores 4 \
-	--executor-memory 4g \
-	--driver-memory 2g \
-	scripts/run_pipeline.py --master yarn
-```
-
-## Run On A Real Dataset
-
-The pipeline can read a real edge list from CSV, JSON, or Parquet. The dataset should contain source and destination node ids, and can optionally include a weight column and a ground-truth label column.
-Node IDs may be numeric or string transaction hashes; string IDs are indexed to numeric IDs internally for Spark PIC.
-
-### Elliptic Bitcoin Transaction Dataset (Parquet)
-
-If your converted Parquet schema is `(src_id, dst_id, amount, timestamp)`, use:
-
-```bash
-conda activate spark_env
-spark-submit \
-	--master yarn \
-	--deploy-mode client \
-	--num-executors 8 \
-	--executor-cores 4 \
-	--executor-memory 6g \
-	--driver-memory 4g \
-	scripts/run_pipeline.py \
-	--master yarn \
-	--input-path hdfs:///datasets/elliptic/transactions.parquet \
-	--input-format parquet \
-	--source-col src_id \
-	--destination-col dst_id \
-	--weight-col amount \
-	--label-col "" \
-	--time-col timestamp
-```
-
-To run a time slice only (for scaling experiments), add:
-
-```bash
---time-min 0 --time-max 1000000
-```
-
-### Build Parquet From Raw Elliptic CSVs
-
-If you only have the original raw files (`elliptic_txs_edgelist.csv`, `elliptic_txs_classes.csv`, `elliptic_txs_features.csv`), build the parquet table first:
-
-```bash
-spark-submit \
-	--master yarn \
-	--deploy-mode client \
-	scripts/prepare_elliptic_parquet.py \
-	--master yarn \
-	--edges-path hdfs:///datasets/elliptic/elliptic_txs_edgelist.csv \
-	--classes-path hdfs:///datasets/elliptic/elliptic_txs_classes.csv \
-	--features-path hdfs:///datasets/elliptic/elliptic_txs_features.csv \
-	--output-path hdfs:///datasets/elliptic/elliptic_edges_prepared.parquet \
-	--timestamp-mode max \
-	--default-amount 1.0
-```
-
-Then run the main pipeline on the prepared parquet path:
-
-```bash
-spark-submit \
-	--master yarn \
-	--deploy-mode client \
-	scripts/run_pipeline.py \
-	--master yarn \
-	--input-path hdfs:///datasets/elliptic/elliptic_edges_prepared.parquet \
-	--input-format parquet \
-	--source-col src_id \
-	--destination-col dst_id \
-	--weight-col amount \
-	--label-col true_label \
-	--time-col timestamp
-```
-
-Recommended Elliptic tuning values if you want the model to flag smaller suspicious clusters more aggressively:
-
-```bash
---pic-k 200 \
---fraud-score-threshold 0.35 \
---micro-cluster-max-size 2000 \
---min-internal-density 0.01
-```
-
-Example for a CSV file in HDFS:
-
-```bash
-conda activate spark_env
-spark-submit \
-	--master yarn \
-	--deploy-mode client \
-	--num-executors 4 \
-	--executor-cores 4 \
-	--executor-memory 4g \
-	--driver-memory 2g \
-	scripts/run_pipeline.py \
-	--master yarn \
-	--input-path hdfs:///data/fraud_edges.csv \
-	--input-format csv \
-	--input-has-header \
-	--source-col src \
-	--destination-col dst \
-	--weight-col weight \
-	--label-col true_label
-```
-
-If your dataset is unweighted, pass an empty weight column and the job will default weights to `1.0`:
-
-```bash
-scripts/run_pipeline.py --input-path hdfs:///data/fraud_edges.parquet --input-format parquet --weight-col "" --label-col ""
-```
-
-If labels are unavailable, the pipeline still clusters the graph, but precision/recall/F1 will not be meaningful.
-
-If you want cluster deploy mode, build a wheel and ship it with `--py-files`:
-
-```bash
-conda activate spark_env
-python -m pip install -U build
-python -m build
-spark-submit \
-	--master yarn \
-	--deploy-mode cluster \
-	--num-executors 4 \
-	--executor-cores 4 \
-	--executor-memory 4g \
-	--driver-memory 2g \
-	--py-files dist/fraud_detection_pic-0.1.0-py3-none-any.whl \
-	scripts/run_pipeline.py --master yarn
-```
-
-When running on YARN, keep `HADOOP_CONF_DIR` and `YARN_CONF_DIR` available in the environment.
-
-## Visualize Results
-
-```bash
-conda activate spark_env
 python scripts/run_pipeline.py --visualize --output-dir outputs
 ```
 
-## Heat-Kernel Laplacian Cooling
+### Elliptic Bitcoin Dataset
+1. **Prepare the data:**
+   ```bash
+   python scripts/prepare_elliptic_parquet.py \
+       --edges-path elliptic_bitcoin_dataset/elliptic_txs_edgelist.csv \
+       --classes-path elliptic_bitcoin_dataset/elliptic_txs_classes.csv \
+       --features-path elliptic_bitcoin_dataset/elliptic_txs_features.csv \
+       --output-path outputs/elliptic_edges_prepared.parquet
+   ```
+2. **Run detection:**
+   ```bash
+   python scripts/run_pipeline.py \
+       --input-path outputs/elliptic_edges_prepared.parquet \
+       --input-format parquet \
+       --source-col src_id \
+       --destination-col dst_id \
+       --weight-col amount \
+       --label-col true_label \
+       --pic-k 200 \
+       --visualize
+   ```
 
-Use heat-kernel annealing to progressively cool the graph affinity and emphasize suspicious/faulty-node regions:
+---
 
+## 🐳 Dockerization
+
+Build the image:
 ```bash
-conda activate spark_env
-python scripts/run_pipeline.py \
-	--heat-kernel \
-	--tau-start 1.2 \
-	--tau-end 0.2 \
-	--cooling-steps 6 \
-	--faulty-node-quantile 0.95 \
-	--faulty-edge-boost 0.35 \
-	--visualize --output-dir outputs
+docker build -t fraud-detection-pic:latest .
 ```
 
-Notes:
-- `tau-start -> tau-end` controls temperature decay (higher to lower).
-- `faulty-node-quantile` picks top-risk nodes to treat as suspicious.
-- `faulty-edge-boost` increases affinity for edges touching suspicious nodes.
-
-This writes at least one file:
-- `outputs/cluster_scores.csv`
-
-If `matplotlib` is available in your environment, it also writes:
-- `outputs/fraud_scores_by_cluster.png`
-- `outputs/density_vs_cv.png`
-
-When heat-kernel mode is enabled, it also writes:
-- `outputs/heat_kernel_iterations.csv`
-- `outputs/heat_area_reduction.png`
-- `outputs/heat_cooling_animation.gif`
-- `outputs/heat_graph_cooling.gif`
-
-Install plotting support if needed:
-
+Run tests inside the container:
 ```bash
-conda activate spark_env
-python -m pip install matplotlib
+docker run --rm fraud-detection-pic:latest python3 -m pytest
 ```
 
-## Optional Test
+---
 
-```bash
-conda activate spark_env
-python -m pytest -q
-```
+## ☸️ Kubernetes Deployment
 
-## What Was Refactored
+The project supports deployment via the **Spark Operator**. 
 
-- Spark session creation was moved to `spark_utils.py`.
-- Synthetic graph generation was moved to `data_generation.py`.
-- Clustering, scoring, and evaluation steps were moved to `pipeline.py`.
-- Orchestration and summary formatting were moved to `main.py`.
-- Notebook remains available under `notebooks/` for experimentation.
+1. **Push image:** `docker push <registry>/fraud-detection-pic:latest`
+2. **Apply RBAC:** `kubectl apply -f k8s/rbac.yaml`
+3. **Submit Job:** `kubectl apply -f k8s/spark-operator-app.yaml`
+
+---
+
+## 📊 Visualizing Results
+
+The pipeline generates several files in the `outputs/` directory:
+- `cluster_scores.csv`: Detailed metrics for every cluster.
+- `fraud_scores_by_cluster.png`: Distribution of risk across the network.
+- `heat_graph_cooling.gif`: Animation of the spectral cooling process (if enabled).
+
+Access the **Spark UI** during execution at **`http://localhost:4040`** (or 4041) to see the GPU-accelerated DAGs and query plans.
+
+---
+
+## 🛠️ Refactoring & Modernization
+This project was refactored from a monolithic notebook into a structured Python package with the following improvements:
+- **Modularity:** Separate modules for data generation, pipeline logic, and configuration.
+- **Performance:** Integrated Kryo serialization and RAPIDS GPU offloading.
+- **Observability:** Added timestamped logging and comprehensive summary reports.
