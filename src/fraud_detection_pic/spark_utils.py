@@ -7,9 +7,7 @@ from .config import SparkConfig
 
 def build_spark_session(cfg: SparkConfig) -> SparkSession:
     """Create a SparkSession tuned for graph-heavy shuffle workloads."""
-    # Preserve Hadoop/YARN configuration so spark-submit can run on a real cluster.
-    os.environ["PYSPARK_PYTHON"] = sys.executable
-    os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
+    # Use the cluster's default environment or spark-submit flags.
 
     spark = (
         SparkSession.builder.appName(cfg.app_name)

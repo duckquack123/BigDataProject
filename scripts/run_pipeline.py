@@ -163,7 +163,12 @@ if __name__ == "__main__":
         "--faulty-node-quantile",
         type=float,
         default=0.95,
-        help="Quantile cutoff to mark suspicious/faulty nodes.",
+        help="Flag top risk nodes based on heat kernel mass.",
+    )
+    parser.add_argument(
+        "--distribute-from-driver",
+        action="store_true",
+        help="Force the driver to read the data and distribute it to workers (use if storage is not shared).",
     )
     parser.add_argument(
         "--faulty-edge-boost",
@@ -210,5 +215,6 @@ if __name__ == "__main__":
         input_delimiter=args.input_delimiter,
         visualize=args.visualize,
         output_dir=args.output_dir,
+        distribute_from_driver=args.distribute_from_driver,
     )
     print(format_summary(summary))

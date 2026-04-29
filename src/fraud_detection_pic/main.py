@@ -36,6 +36,7 @@ def run_pipeline(
     input_delimiter: str = ",",
     visualize: bool = False,
     output_dir: str = "outputs",
+    distribute_from_driver: bool = False,
 ) -> dict[str, Any]:
     spark_cfg = spark_cfg or SparkConfig()
     pipeline_cfg = pipeline_cfg or PipelineConfig()
@@ -44,17 +45,29 @@ def run_pipeline(
 
     if input_path:
         reader = spark.read
-        if input_format.lower() == "csv":
-            raw_df = (
-                reader.option("header", str(input_has_header).lower())
-                .option("inferSchema", "true")
-                .option("delimiter", input_delimiter)
-                .csv(input_path)
-            )
-        elif input_format.lower() == "json":
-            raw_df = reader.json(input_path)
+        if distribute_from_driver:
+            # Force the driver (laptop) to read the data using Pandas (local filesystem),
+            # then distribute it to the executors (Mac). This bypasses Spark's distributed read.
+            import pandas as pd
+            if input_format.lower() == "parquet":
+                pdf = pd.read_parquet(input_path)
+            elif input_format.lower() == "csv":
+                pdf = pd.read_csv(input_path, sep=input_delimiter)
+            else:
+                raise ValueError(f"In-memory distribution not implemented for format: {input_format}")
+            raw_df = spark.createDataFrame(pdf)
         else:
-            raw_df = reader.format(input_format).load(input_path)
+            if input_format.lower() == "csv":
+                raw_df = (
+                    reader.option("header", str(input_has_header).lower())
+                    .option("inferSchema", "true")
+                    .option("delimiter", input_delimiter)
+                    .csv(input_path)
+                )
+            elif input_format.lower() == "json":
+                raw_df = reader.json(input_path)
+            else:
+                raw_df = reader.format(input_format).load(input_path)
 
         if time_col:
             if time_col not in raw_df.columns:
